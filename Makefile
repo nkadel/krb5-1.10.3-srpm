@@ -13,6 +13,8 @@ MOCKS+=smbrepo-6-x86_64
 #MOCKS+=smbrepo-5-x86_64
 #MOCKS+=smbrepo-4-x86_64
 
+REPOBASEDIR=/var/www/mirrors/smbrepo/
+
 SPEC := `ls *.spec | head -1`
 PKGNAME := "`ls *.spec | head -1 | sed 's/.spec$$//g'`"
 
@@ -37,9 +39,9 @@ build:: srpm FORCE
 
 $(MOCKS):: verifyspec FORCE
 	@if [ -e $@ -a -n "`find $@ -name \*.rpm`" ]; then \
-		echo "Skipping RPM populated $@"; \
+		echo "	Skipping RPM populated $@"; \
 	else \
-		echo "Building $@ RPMS with $(SPEC)"; \
+		echo "	Building $@ RPMS with $(SPEC)"; \
 		rm -rf $@; \
 		mock -q -r $@ --sources=$(PWD) \
 		    --resultdir=$(PWD)/$@ \
@@ -54,6 +56,25 @@ $(MOCKS):: verifyspec FORCE
 	fi
 
 mock:: $(MOCKS)
+
+install:: $(MOCKS)
+	@for repo in $(MOCKS); do \
+	    echo Installing $$repo; \
+	    echo "$$repo" | awk -F- '{print $$2,$$3}' | while read yumrelease yumarch; do \
+		rpmdir=$(REPOBASEDIR)/$$yumrelease/$$yumarch; \
+		srpmdir=$(REPOBASEDIR)/$$yumrelease/SRPMS; \
+		echo "Pushing SRPMS to $$srpmdir"; \
+		sudo rsync -av $$repo/*.src.rpm --no-owner --no-group $$repo/*.src.rpm $$srpmdir/. || exit 1; \
+		find $$srpmdir/ -noleaf -name repodata -prune -o -cnewer $$srpmdir/repodata -print | grep -v . || \
+			sudo createrepo -q --update $$srpmdir/.; \
+		echo "Pushing RPMS to $$rrpmdir"; \
+		sudo rsync -av $$repo/*.rpm --exclude=*.src.rpm --no-owner --no-group $$repo/*.rpm $$rpmdir/. || exit 1; \
+		find $$rpmdir/ -noleaf -name repodata -prune -o -cnewer $$rpmdir/repodata -print | grep -v . || \
+			sudo createrepo -q --update $$srpmdir/. || exit 1; \
+	    done; \
+	    echo "Deleting /var/cache/mock/$$repo/to clear cache"; \
+	    sudo rm -rf /var/cache/mock/$$repo/; \
+	done
 
 clean::
 	rm -rf $(MOCKS)
