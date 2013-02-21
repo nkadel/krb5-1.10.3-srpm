@@ -1,5 +1,4 @@
 *.rpm
 *~
-epel-*
 krb-*[0-9]*.tar.gz
-smbrepo-*
+samba4repo*
