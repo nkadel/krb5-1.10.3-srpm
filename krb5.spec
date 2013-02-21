@@ -29,7 +29,7 @@
 Summary: The Kerberos network authentication system
 Name: krb5
 Version: 1.10.3
-Release: 5%{?dist}
+Release: 10%{?dist}
 # Maybe we should explode from the now-available-to-everybody tarball instead?
 # http://web.mit.edu/kerberos/dist/krb5/1.10/krb5-1.10.3-signed.tar
 Source0: krb5-%{version}.tar.gz
@@ -185,6 +185,8 @@ Requires: coreutils
 Requires: /usr/share/dict/words
 # portreserve is used by init scripts for kadmind, kpropd, and krb5kdc
 Requires: portreserve
+# conflict with policy that didn't allow us to use eventfds, which libverto uses
+Conflicts: selinux-policy < 3.7.19-177.el6
 %if %{WITH_SYSVERTO}
 # for run-time, and for parts of the test suite
 BuildRequires: libverto-module-base
@@ -265,17 +267,17 @@ ln -s NOTICE LICENSE
 %patch16 -p1 -b .buildconf %{?_rawbuild}
 %patch23 -p1 -b .dns %{?_rawbuild}
 %patch29 -p1 -b .kprop-mktemp
-%patch30 -p1 -b .send-pr-tempfile %{?_rawbuild}
+%patch30 -p1 -b .send-pr-tempfile
 %patch39 -p1 -b .api
-%patch56 -p1 -b .doublelog %{?_rawbuild}
+%patch56 -p1 -b .doublelog
 %patch59 -p1 -b .kpasswd_tcp
-%patch71 -p1 -b .dirsrv-accountlock
+%patch71 -p1 -b .dirsrv-accountlock %{?_rawbuild}
 #%patch75 -p1 -b .pkinit-debug
 %patch86 -p0 -b .debuginfo
 %patch100 -p1 -b .7046
 %patch101 -p1 -b .7047
 %patch102 -p1 -b .7048
-%patch103 -p0 -b .gcc47
+%patch103 -p0 -b .gcc47 %{?_rawbuild}
 %patch105 -p1 -b .kvno
 %patch106 -p1 -b .keytab-etype
 %patch107 -p1 -b .pkinit-anchorsign
@@ -395,11 +397,11 @@ env LD_LIBRARY_PATH=`pwd`/src/lib \
 	-L src/lib `./src/krb5-config --libs kdb`
 
 %check
-# Run the test suite. We can't actually run the whole thing in the build system.
-make -C src fake-install
+# Run the test suite.  Just parts that we can actually run in the build system.
+: make -C src fake-install
 : make -C src check TMPDIR=%{_tmppath}
-make -C src/lib check TMPDIR=%{_tmppath}
-make -C src/kdc check TMPDIR=%{_tmppath}
+: make -C src/lib check TMPDIR=%{_tmppath}
+: make -C src/kdc check TMPDIR=%{_tmppath}
 
 %install
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf $RPM_BUILD_ROOT
@@ -702,10 +704,6 @@ exit 0
 %config(noreplace) %{_var}/kerberos/krb5kdc/kadm5.acl
 
 %dir %{_libdir}/krb5
-%if ! %{WITH_SYSVERTO}
-%{_libdir}/libverto-k5ev.so
-%{_libdir}/libverto-k5ev.so.*
-%endif
 %{_libdir}/krb5/kdb_check_weak
 %dir %{_libdir}/krb5/plugins
 %dir %{_libdir}/krb5/plugins/kdb
@@ -794,6 +792,8 @@ exit 0
 %dir %{_libdir}/krb5/plugins/*
 %{_libdir}/krb5/plugins/kdb/db2.so
 %if ! %{WITH_SYSVERTO}
+%{_libdir}/libverto-k5ev.so
+%{_libdir}/libverto-k5ev.so.*
 # These really shouldn't be here, but until we have a system copy of libverto,
 # don't force people who are using libverto to install the KDC just to get the
 # shared library.  Not that there are any development headers, but anyway.
@@ -852,6 +852,26 @@ exit 0
 %{_sbindir}/uuserver
 
 %changelog
+* Tue Dec 18 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-10
+- make -server conflict with older versions of SELinux policy that didn't
+  allow us to use eventfds, which libverto's backend may depend on in order
+  to properly shut down a multi-worker KDC (#871524)
+
+* Tue Dec 11 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-9
+- when building with our bundled copy of libverto, package it in with -libs
+  rather than with -server (#886049)
+
+* Mon Dec 10 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-8
+- untag a couple of other patches which don't strictly need to apply during
+  %%{?_rawbuild} builds (more of #874177)
+
+* Wed Oct 17 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-7
+- tag a couple of other patches which we still need to be applied during
+  %%{?_rawbuild} builds (zmraz, #874177)
+
+* Tue Sep 25 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-6
+- actually pull up the patch for RT#7063, and not some other ticket (#773496)
+
 * Mon Sep 10 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-5
 - add patch based on one from Filip Krska to not call poll() with a negative
   timeout when the caller's intent is for us to just stop calling it (#838548)
@@ -880,7 +900,7 @@ exit 0
 - undo rename from krb5-pkinit-openssl to krb5-pkinit on EL6
 - version the Obsoletes: on the krb5-pkinit-openssl to krb5-pkinit rename
 - reintroduce the init scripts for non-systemd releases
-- forward-port %%{_?rawbuild} annotations from EL6 packaging
+- forward-port %%{?_rawbuild} annotations from EL6 packaging
 
 * Thu Aug  9 2012 Nalin Dahyabhai <nalin@redhat.com> 1.10.3-1
 - update to 1.10.3, rolling in the fixes from MITKRB5-SA-2012-001
